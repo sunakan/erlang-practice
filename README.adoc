@@ -1,0 +1,7 @@
+== Erlangを学ぶ
+
+include::https://erlang.org/doc/getting_started/users_guide.html[Getting Started with Erlang]
+
+include::https://erlang.org/doc/design_principles/users_guide.html[OTP Design Principles User's Guide]
+
+include::https://www.ymotongpoo.com/works/lyse-ja/[Learn you some Erlang for great good!の和訳]
