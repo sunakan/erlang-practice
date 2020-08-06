@@ -5,3 +5,18 @@ include::https://erlang.org/doc/getting_started/users_guide.html[Getting Started
 include::https://erlang.org/doc/design_principles/users_guide.html[OTP Design Principles User's Guide]
 
 include::https://www.ymotongpoo.com/works/lyse-ja/[Learn you some Erlang for great good!の和訳]
+
+.インタプリタ
+----
+$ make erl
+----
+
+.インタプリタの終了
+----
+1>
+BREAK: (a)bort (A)bort with dump (c)ontinue (p)roc info (i)nfo
+       (l)oaded (v)ersion (k)ill (D)b-tables (d)istribution
+a
+----
+
+か `halt().`
