@@ -16,5 +16,5 @@ erl:
 		--interactive \
 		--tty \
 		--workdir /var/local/app/ \
-		--mount type=bind,source=$(PWD),target=/var/local/app/ \
+		--mount type=bind,source=$(PWD)/02-Sequential-Programming/,target=/var/local/app/ \
 		$(DOCKER_IMAGE) erl
