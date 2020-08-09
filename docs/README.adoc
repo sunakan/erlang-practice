@@ -1,1 +1,227 @@
-== ノート
+:lang: ja
+:doctype: book
+:toc: left
+:toclevels: 3
+:toc-title: 目次
+:sectnums:
+:sectnumlevels: 4
+:sectlinks:
+:imagesdir: ./_images
+:icons: font
+:source-highlighter: coderay
+:example-caption: 例
+:table-caption: 表
+:figure-caption: 図
+:docname: = ノート
+:author: sunakan
+
+== messenger2.erlのノート
+
+* 4つのシェルを使う
+* 1つサーバ、3つクライアント
+* それぞれのクライアントは1つのサーバを介してメッセージのやりとりをする
+* クライアントはユニークな名前でログオンをする
+* クライアントはログオン済みの名前を指定してメッセージを送る
+
+=== サーバ側
+
+.サーバ側でやることは1つ
+----
+$ messenger2:start_server().
+----
+
+=== クライアント側
+
+.クライアント-c1側
+----
+$ make c1
+(c1@bilbo)1> messenger:logon(peter).
+----
+
+.クライアント-c2側
+----
+$ make c2
+(c2@kosken)1> messenger2:logon(james).
+----
+
+.クライアント-c3側
+----
+$ make c3
+(c3@gollum)1> messenger2:logon(fred).
+----
+
+
+==== logon後の処理
+
+.messenger2.erlのlogon(Name)
+----
+%% クライアント
+logon(Name) ->
+  case whereis(mess_client) of
+    undefined ->
+      register(mess_client, spawn(messenger2, client, [server_node(), Name]));
+    _ ->
+      already_logged_on
+  end.
+----
+
+* logon
+** whereis(mess_client)でmess_clientがなければmessenger2モジュールのclient関数をrun
+*** client関数の引数は2つ
+**** 1つめ：server_node() => `messenger@super` というAtom
+**** 2つめ：Nameはlogon(peter)だと `peter` というAtom
+
+.messenger2.erlのclient(Server_Node, Name)
+----
+client(Server_Node, Name) ->
+  {messenger, Server_Node} ! {self(), logon, Name},
+  await_result(),
+  client(Server_Node).
+----
+
+* `{messenger, Server_Node} ! {self(), logon, Name},`
+** `messenger@super` の messenger というAtomに対してメッセージを送る
+*** 送るもの：自分の "Pid" と `logon` というAtomと "名前" を送る
+** そして `await_result()` で待つ
+
+.client側でmessenger2.erlのawait_result
+----
+await_result() ->
+  receive
+    {messenger, stop, Why} ->
+      io:format("~p~n", [Why]),
+      exit(normal);
+    {messenger, What} ->
+      io:format("~p~n", [What])
+  end.
+----
+
+* 成功するとWhatがでる
+* 失敗するとすると理由がprintされて終了
+
+
+
+
+* 送られたサーバ側の挙動
+
+.サーバ側でmessenger2.erlの{self(), logon, Name}というメッセージを送ると。。
+----
+server(User_List) ->
+  receive
+    {From, logon, Name} ->
+      New_User_List = server_logon(From, Name, User_List),
+      server(New_User_List);
+    {From, logoff} ->
+      New_User_List = server_logoff(From, User_List),
+      server(New_User_List);
+    {From, message_to, To, Message} ->
+      server_transfer(From, To, Message, User_List),
+      io:format("list is now: ~p~n", [User_List]),
+      server(User_List)
+  end.
+----
+
+* これの一番上がmatchする logon OKで
+* クライアント側で `await_result()` で待っていたので
+* Server_Nodeの中身は `messenger@super` というAtom
+* クライアント側で `client(messenger@super)` が呼ばれる
+
+.client側でmessenger2.erlのclient(messenger@super)
+----
+client(Server_Node) ->
+  receive
+    logoff ->
+      {messenger, Server_Node} ! {self(), logoff},
+      exit(normal);
+    {message_to, ToName, Message} ->
+      {messenger, Server_Node} ! {self(), message_to, ToName, Message},
+      await_result();
+    {message_from, FromName, Message} ->
+      io:format("Message from ~p: ~p~n", [FromName, Message])
+  end,
+  client(Server_Node).
+----
+
+* これでメッセージを待つクライアントができた
+** 結局各clientでやってるのは `messenger2:logon(XXXX)` のみ
+
+
+.クライアント側でメッセージを送る(peter -> fred)
+----
+(c1@bilbo)6> messenger2:message(fred, "hello").
+----
+
+.messenger2.erlのmessege()
+----
+message(ToName, Message) ->
+  case whereis(mess_client) of
+    undefined ->
+      not_logged_on;
+    _ ->
+      mess_client ! {message_to, ToName, Message},
+      ok
+  end.
+----
+
+* ToNameにはfredというAtom
+* Messageには"hello"
+* もし `mess_client` がなかったらログインしてないのでダメ
+* `mess_client` に `{message_to, ToName, Message}` を送る
+** ここでいう mess_client は クライアント側のclient関数でrunしていてreceiveで待っている
+
+待っているのは。。
+
+.client側でmessenger2.erlのclient(messenger@super)
+----
+client(Server_Node) ->
+  receive
+    logoff ->
+      {messenger, Server_Node} ! {self(), logoff},
+      exit(normal);
+    {message_to, ToName, Message} ->
+      {messenger, Server_Node} ! {self(), message_to, ToName, Message},
+      await_result();
+    {message_from, FromName, Message} ->
+      io:format("Message from ~p: ~p~n", [FromName, Message])
+  end,
+  client(Server_Node).
+----
+
+* これの2番目
+* サーバに `{self(), message_to, ToName, Message}` を送る
+** `{自分のPid, message_to, 宛先名, メッセージ}`
+
+サーバ側では。。
+
+.サーバ側でmessenger2.erl
+----
+server(User_List) ->
+  receive
+    {From, logon, Name} ->
+      New_User_List = server_logon(From, Name, User_List),
+      server(New_User_List);
+    {From, logoff} ->
+      New_User_List = server_logoff(From, User_List),
+      server(New_User_List);
+    {From, message_to, To, Message} ->
+      server_transfer(From, To, Message, User_List),
+      io:format("list is now: ~p~n", [User_List]),
+      server(User_List)
+  end.
+----
+
+* これの3番目
+* `{送信元, message_to, 宛先, メッセージ}` を受けて
+* `server_transfer(送信元, 宛先, メッセージ, User_List)` をする
+
+.messenger2.erlの
+----
+message(ToName, Message) ->
+  case whereis(mess_client) of
+    undefined ->
+      not_logged_on;
+    _ ->
+      mess_client ! {message_to, ToName, Message},
+      ok
+  end.
+----
